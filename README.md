@@ -4,7 +4,7 @@
 
 Chepodros is a satirical meme token created to highlight the absurdity of the cryptocurrency market, where numerous projects are launched with the goal of draining liquidity and disappearing. The Chepodros project seeks to provide a transparent and fun alternative, promoting fairness and safety for new investors while maintaining a humorous tone.
 
-This contract is built on the ERC-20 standard, deployed on the Ethereum blockchain, and uses Uniswap V2 for liquidity management. The contract includes advanced features such as anti-bot protection, dynamic taxation, time-locked administrative controls, and more.
+This contract is built on the ERC-20 standard, deployed on the Ethereum based blockchain, and uses Uniswap V2 for liquidity management. The contract includes advanced features such as anti-bot protection, dynamic taxation, time-locked administrative controls, and more.
 
 ---
 
@@ -60,7 +60,7 @@ This contract is built on the ERC-20 standard, deployed on the Ethereum blockcha
 
 ## Deployment
 
-1. Deploy this contract to a suitable Ethereum-based network (Ethereum, Binance Smart Chain, etc.).
+1. Deploy this contract to a suitable Ethereum-based network (Ethereum, Binance Smart Chain, Base, etc.).
 2. Use Remix, Truffle, or Hardhat for deployment.
 3. Configure the Uniswap V2 router and WETH address during initialization.
 
@@ -113,5 +113,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contact
 
-For any questions or feedback, please contact us via GitHub Issues or email at [Chepodros@dev.email](mailto:Chepodros@dev.email).
+For any questions or feedback, please contact us via GitHub Issues or email at [Chepodros@gmail.com](mailto:Chepodros@gmail.com).
 
