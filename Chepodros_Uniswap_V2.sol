@@ -2,15 +2,15 @@
 pragma solidity ^0.8.20;
 
 // OpenZeppelin contracts for ERC20 token, Ownable access control, and upgradeability
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol"; // Standard ReentrancyGuard for non-upgradeable base
+import "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/v4.8.3/contracts/token/ERC20/ERC20Upgradeable.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/v4.8.3/contracts/access/OwnableUpgradeable.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.8.3/contracts/security/ReentrancyGuard.sol"; // Standard ReentrancyGuard for non-upgradeable base
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol"; // Uniswap V2 Router interface
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol"; // Required for upgradeable contracts
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol"; // UUPS pattern for upgradeability
+import "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/v4.8.3/contracts/proxy/utils/Initializable.sol"; // Required for upgradeable contracts
+import "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/v4.8.3/contracts/proxy/utils/UUPSUpgradeable.sol"; // UUPS pattern for upgradeability
 
 // Interface for standard ERC20 tokens, used for rescueTokens
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.8.3/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title Chepodros Token (CHEPOS) - UUPS Implementation for Uniswap V2
@@ -20,16 +20,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuard, UUPSUpgradeable {
     // === Constants ===
     uint256 public constant INITIAL_SUPPLY = 21_000_000_000 * 10 ** 18; // Total token supply (21 billion with 18 decimals).
-    uint256 public constant BUY_TAX = 3; // Buy tax percentage (e.g., 3 means 3%).
-    uint256 public constant SELL_TAX = 7; // Sell tax percentage (e.g., 7 means 7%).
+    uint256 public constant INITIAL_BUY_TAX = 3; // Initial buy tax percentage (e.g., 3 means 3%).
+    uint256 public constant INITIAL_SELL_TAX = 7; // Initial sell tax percentage (e.g., 7 means 7%).
     uint256 public constant MAX_ANTI_BOT_TAX = 50; // Initial maximum anti-bot tax percentage (e.g., 50 means 50%).
     uint256 public constant ANTI_BOT_DURATION = 5 minutes; // Duration of the anti-bot tax period (e.g., 5 minutes).
     uint256 public constant WHITELIST_DURATION = 2 minutes; // Duration for whitelist-only trading after launch (e.g., 2 minutes).
     uint256 public constant TIMELOCK_DURATION = 24 hours; // Standard timelock duration for critical administrative functions (e.g., 24 hours).
     uint256 public constant SWAP_GAS_LIMIT_MIN = 300_000; // Minimum gas limit allowed for internal swap transactions.
     uint256 public constant SWAP_GAS_LIMIT_MAX = 2_000_000; // Maximum gas limit allowed for internal swap transactions.
-    uint256 public constant MIN_SWAP_AMOUNT = 10_000 * 10 ** 18; // Minimum token amount to trigger an automatic swap of collected taxes to ETH.
+    uint256 public constant MIN_SWAP_AMOUNT = 5_000_000 * 10 ** 18; // Minimum token amount to trigger an automatic swap of collected taxes to ETH.
     uint256 public constant LIMIT_DISABLE_PERIOD = 7 days; // Duration after launch when transaction and wallet limits are automatically disabled.
+    uint256 public constant MAX_CONFIGURABLE_BUY_TAX = 5; // Maximum allowed percentage for the configurable buy tax (e.g., 5%).
+    uint256 public constant MAX_CONFIGURABLE_SELL_TAX = 10; // Maximum allowed percentage for the configurable sell tax (e.g., 10%).
 
     // === State Variables ===
     IUniswapV2Router02 public uniswapRouter; // Address of the Uniswap V2 router for liquidity operations.
@@ -46,6 +48,9 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
     uint256 public maxTxAmount; // Maximum token amount allowed per single transaction.
     uint256 public maxWallet;    // Maximum token balance allowed per individual wallet.
 
+    uint256 public currentBuyTax; // Current permanent buy tax percentage, configurable by owner.
+    uint256 public currentSellTax; // Current permanent sell tax percentage, configurable by owner.
+
     // Timelock variables for various administrative functions, storing the timestamp when the timelock expires.
     uint256 public taxWalletTimelock; // Timelock for updating the tax wallet address.
     uint256 public rescueTimelock;    // Timelock for rescue operations (tokens or ETH).
@@ -53,7 +58,9 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
     uint256 public maxTxAmountTimelock;  // Timelock for max transaction amount updates.
     uint256 public maxWalletTimelock;    // Timelock for max wallet balance updates.
     uint256 public swapGasLimitTimelock; // Timelock for swap gas limit updates.
-    uint224 public limitsDisableTimelock; // Timelock for setting the limits disable time. (Note: uint224 for efficiency)
+    uint256 public limitsDisableTimelock; // Timelock for setting the limits disable time.
+    uint256 public buyTaxTimelock; // Timelock for updating the permanent buy tax.
+    uint256 public sellTaxTimelock; // Timelock for updating the permanent sell tax.
 
     // === Future Integration Variables (for Chainlink & 1inch) ===
     address public chainlinkPriceFeed; // Address of the Chainlink Price Feed contract for external price data integration.
@@ -75,6 +82,8 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
     event MaxWalletUpdated(uint256 amount);    // Emitted when the max wallet balance is updated.
     event WhitelistUpdated(address indexed account, bool status); // Emitted when a whitelist status for an address is updated.
     event LimitsDisableTimeSet(uint256 timestamp); // Emitted when the limits disable time is manually set.
+    event CurrentBuyTaxUpdated(uint256 newTax); // Emitted when the current permanent buy tax is updated.
+    event CurrentSellTaxUpdated(uint256 newTax); // Emitted when the current permanent sell tax is updated.
 
     // Timelock trigger events. These indicate that a timelock has been initiated.
     event TaxesTimelockTriggered(); // Emitted when the timelock for taxes enable/disable is triggered.
@@ -86,6 +95,8 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
     event OneInchTimelockTriggered(); // Emitted when the timelock for 1inch router address update is triggered.
     event ChainlinkPriceFeedUpdated(address indexed newAddress); // Emitted when the Chainlink price feed address is updated.
     event OneInchRouterUpdated(address indexed newAddress);      // Emitted when the 1inch router address is updated.
+    event BuyTaxTimelockTriggered(); // Emitted when the timelock for buy tax update is triggered.
+    event SellTaxTimelockTriggered(); // Emitted when the timelock for sell tax update is triggered.
 
     // === Modifiers ===
     /**
@@ -152,6 +163,22 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
         _;
     }
 
+    /**
+     * @dev Restricts calls until the permanent buy tax timelock has passed.
+     */
+    modifier onlyAfterBuyTaxTimelock() {
+        require(block.timestamp >= buyTaxTimelock, "Timelock: buy tax locked");
+        _;
+    }
+
+    /**
+     * @dev Restricts calls until the permanent sell tax timelock has passed.
+     */
+    modifier onlyAfterSellTaxTimelock() {
+        require(block.timestamp >= sellTaxTimelock, "Timelock: sell tax locked");
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     /**
      * @dev Constructor for the upgradeable contract. It disables the initializer,
@@ -169,7 +196,7 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
      */
     function initialize(address _uniswapRouter, address _WETH) initializer public {
         __ERC20_init("Chepodros", "CHEPOS"); // Initializes the ERC20 token with name and symbol.
-        __Ownable_init(msg.sender); // Initializes ownership to the deployer.
+        __Ownable_init(); // Initializes ownership to the deployer.
         __UUPSUpgradeable_init(); // Initializes the UUPS upgradeability pattern.
 
         uniswapRouter = IUniswapV2Router02(_uniswapRouter); // Sets the Uniswap V2 router address.
@@ -181,6 +208,8 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
         tradingEnabled = false; // Trading is initially disabled.
         taxesEnabled = true; // Taxes are initially enabled.
         limitsDisableTime = 0; // Limits are active by default until trading is enabled.
+        currentBuyTax = INITIAL_BUY_TAX; // Initialize current buy tax to the default buy tax.
+        currentSellTax = INITIAL_SELL_TAX; // Initialize current sell tax to the default sell tax.
     }
 
     /**
@@ -229,6 +258,7 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
         }
 
         uint256 taxAmount = 0; // Initialize tax amount.
+        uint256 effectiveTaxRate = 0; // Initialize effective tax rate.
 
         // Tax calculation:
         // Taxes are applied only if enabled and neither sender nor receiver is excluded from fees.
@@ -238,16 +268,22 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
                 uint256 timeElapsed = block.timestamp - launchTime; // Time passed since launch.
                 uint256 reduction = (timeElapsed / 1 minutes) * 10; // Tax reduction by 10% every minute.
                 // Calculate anti-bot tax, ensuring it doesn't go below zero.
-                uint256 antiBotTax = MAX_ANTI_BOT_TAX > reduction ? MAX_ANTI_BOT_TAX - reduction : 0;
-                taxAmount = amount * antiBotTax / 100;
+                effectiveTaxRate = MAX_ANTI_BOT_TAX > reduction ? MAX_ANTI_BOT_TAX - reduction : 0;
             } else {
-                // Permanent tax phase: standard buy/sell taxes.
+                // Permanent tax phase: standard buy/sell taxes, capped by MAX_CONFIGURABLE_BUY_TAX/SELL_TAX.
                 if (from == address(uniswapRouter)) { // If tokens are coming from the Uniswap router (a buy).
-                    taxAmount = amount * BUY_TAX / 100;
+                    effectiveTaxRate = currentBuyTax;
+                    if (effectiveTaxRate > MAX_CONFIGURABLE_BUY_TAX) { // Apply max buy tax limit.
+                        effectiveTaxRate = MAX_CONFIGURABLE_BUY_TAX;
+                    }
                 } else if (to == address(uniswapRouter)) { // If tokens are going to the Uniswap router (a sell).
-                    taxAmount = amount * SELL_TAX / 100;
+                    effectiveTaxRate = currentSellTax;
+                    if (effectiveTaxRate > MAX_CONFIGURABLE_SELL_TAX) { // Apply max sell tax limit.
+                        effectiveTaxRate = MAX_CONFIGURABLE_SELL_TAX;
+                    }
                 }
             }
+            taxAmount = amount * effectiveTaxRate / 100;
         }
 
         uint256 amountAfterTax = amount - taxAmount; // Amount to transfer to the recipient after tax.
@@ -368,6 +404,30 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
     function setTaxesEnabled(bool enabled) external onlyOwner onlyAfterTaxesTimelock {
         taxesEnabled = enabled; // Set the tax mechanism status.
         emit TaxesEnabledUpdated(enabled); // Emit an event indicating the change.
+    }
+
+    /**
+     * @dev Sets the permanent buy tax percentage.
+     * This function is protected by a timelock (`buyTaxTimelock`).
+     * Can only be called by the contract owner.
+     * @param newTax The new permanent buy tax percentage. Must not exceed `MAX_CONFIGURABLE_BUY_TAX`.
+     */
+    function setBuyTax(uint256 newTax) external onlyOwner onlyAfterBuyTaxTimelock {
+        require(newTax <= MAX_CONFIGURABLE_BUY_TAX, "New buy tax exceeds max limit"); // Enforce hardcoded upper limit.
+        currentBuyTax = newTax; // Update the current permanent buy tax.
+        emit CurrentBuyTaxUpdated(newTax); // Emit an event.
+    }
+
+    /**
+     * @dev Sets the permanent sell tax percentage.
+     * This function is protected by a timelock (`sellTaxTimelock`).
+     * Can only be called by the contract owner.
+     * @param newTax The new permanent sell tax percentage. Must not exceed `MAX_CONFIGURABLE_SELL_TAX`.
+     */
+    function setSellTax(uint256 newTax) external onlyOwner onlyAfterSellTaxTimelock {
+        require(newTax <= MAX_CONFIGURABLE_SELL_TAX, "New sell tax exceeds max limit"); // Enforce hardcoded upper limit.
+        currentSellTax = newTax; // Update the current permanent sell tax.
+        emit CurrentSellTaxUpdated(newTax); // Emit an event.
     }
 
     /**
@@ -604,6 +664,26 @@ contract Chepodros is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reent
     function triggerOneInchTimelock() external onlyOwner {
         oneInchTimelock = block.timestamp + TIMELOCK_DURATION; // Sets the timelock expiration for 1inch router.
         emit OneInchTimelockTriggered(); // Emits an event.
+    }
+
+    /**
+     * @dev Triggers the timelock for updating the permanent buy tax (`setBuyTax`).
+     * The update will become callable only after `TIMELOCK_DURATION` has passed from this call.
+     * Can only be called by the contract owner.
+     */
+    function triggerBuyTaxTimelock() external onlyOwner {
+        buyTaxTimelock = block.timestamp + TIMELOCK_DURATION; // Set the timelock expiration for buy tax update.
+        emit BuyTaxTimelockTriggered(); // Emits an event.
+    }
+
+    /**
+     * @dev Triggers the timelock for updating the permanent sell tax (`setSellTax`).
+     * The update will become callable only after `TIMELOCK_DURATION` has passed from this call.
+     * Can only be called by the contract owner.
+     */
+    function triggerSellTaxTimelock() external onlyOwner {
+        sellTaxTimelock = block.timestamp + TIMELOCK_DURATION; // Set the timelock expiration for sell tax update.
+        emit SellTaxTimelockTriggered(); // Emits an event.
     }
 
     // === Fallback functions to receive ETH ===

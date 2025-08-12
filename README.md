@@ -18,22 +18,29 @@ This contract is built on the ERC-20 standard, deployed on the Ethereum based bl
    - Manual trading control with the `openTrading()` function
 
 ### 2. **Tax Mechanism**
+
+### 🧾 Tax Limitations
+
    - **Buy Tax:** 3%
    - **Sell Tax:** 7%
+   - **Buy Tax Limit**: Cannot exceed **5%**
+   - **Sell Tax Limit**: Cannot exceed **10%**
+   - These limits are enforced in `setBuyTax()` and `setSellTax()` functions
+   - Prevents abuse or sudden increase in taxation by the owner
    - **Anti-bot Tax:** Starts at 50%, reduces by 10% per minute over 5 minutes
-
+   
 ### 3. **Whitelist**
    - **Start Whitelist:** During initial trading phase, only whitelisted addresses can trade.
    - **Permanent Whitelist:** Excludes addresses from taxes (set by `excludedFromFees`).
 
 ### 4. **Time Locks**
    - Time-locked functions to prevent misuse:
-     - Taxes Enabled (`taxesEnabled`)
-     - Max Transaction Amount (`maxTxAmount`)
-     - Max Wallet Amount (`maxWallet`)
-     - Swap Gas Limit (`swapGasLimit`)
-     - Tax Wallet (`taxWallet`)
-     - Rescue Functions
+   - Taxes Enabled (`taxesEnabled`)
+   - Max Transaction Amount (`maxTxAmount`)
+   - Max Wallet Amount (`maxWallet`)
+   - Swap Gas Limit (`swapGasLimit`)
+   - Tax Wallet (`taxWallet`)
+   - Rescue Functions
 
 ### 5. **Anti-bot Protection**
    - **Transaction Limits:** Restrictions on the number of tokens per transaction (`maxTxAmount`) and wallet balance (`maxWallet`).
@@ -58,11 +65,21 @@ This contract is built on the ERC-20 standard, deployed on the Ethereum based bl
 
 ---
 
+## UUPS Upgradeability
+The contract is implemented as **Upgradeable (UUPS pattern)**: it uses `UUPSUpgradeable` and the `_authorizeUpgrade(address)` method to control upgrades. This allows functionality to be extended without redeploying the contract while preserving the proxy state. In production, management via multisig is recommended.
+
+---
+
+## Auto-disable of Limits
+**Auto-disable limits**: in addition to manual configuration via `setLimitsDisableTime(...)`, the contract provides for automatic disabling of `maxTx`/`maxWallet` limits after a specified period following the start of trading (`LIMIT_DISABLE_PERIOD = 7 days`). This describes the actual logic of the contract.
+
+---
+
 ## Deployment
 
-1. Deploy this contract to a suitable Ethereum-based network (Ethereum, Binance Smart Chain, Base, etc.).
-2. Use Remix, Truffle, or Hardhat for deployment.
-3. Configure the Uniswap V2 router and WETH address during initialization.
+   1. Deploy this contract to a suitable Ethereum-based network (Ethereum, Binance Smart Chain, Base, etc.).
+   2. Use Remix, Truffle, or Hardhat for deployment.
+   3. Configure the Uniswap V2 router and WETH address during initialization.
 
 ---
 
@@ -72,14 +89,14 @@ This contract is built on the ERC-20 standard, deployed on the Ethereum based bl
    - Enables trading after initial restrictions.
    - Can only be called by the owner.
 
-### 2. **setTaxEnabled(bool)**
+### 2. **setTaxesEnabled(bool)**
    - Enables or disables the tax mechanism.
    - Can only be called after the respective timelock.
 
-### 3. **addToWhitelist(address[])**
+### 3. **batchAddToWhitelist(address[])**
    - Adds multiple addresses to the whitelist.
 
-### 4. **removeFromWhitelist(address[])**
+### 4. **setWhitelist(address,false)**
    - Removes multiple addresses from the whitelist.
 
 ### 5. **manualSwapAndSend()**
@@ -96,6 +113,42 @@ This contract is built on the ERC-20 standard, deployed on the Ethereum based bl
 ### 8. **setSwapGasLimit(uint256)**
    - Sets the gas limit for swaps on Uniswap V2.
    - Can only be adjusted after a timelock.
+
+### 9. **updateMaxTxAmount(uint256)**  
+   - Manually sets the max transaction amount.
+   - Protected by timelock.
+
+### 10. **updateMaxWallet(uint256)**  
+   - Manually sets the max wallet holding limit.
+   - Protected by timelock.
+
+### 11. **setLimitsDisableTime(uint256 timestamp)**  
+   - Manually sets when the tx/wallet limits should auto-disable.
+   - Protected by timelock.
+
+### 12. **batchExcludeFromFees(address[])**  
+   - Exclude multiple addresses from taxes.
+
+### 13. **setWhitelist(address,bool)**  
+   - Set or unset a single address as whitelisted.
+
+### 14. **rescueTokens(address token, address to, uint256 amount)**  
+   - Recover any ERC20 tokens mistakenly sent to the contract. Protected by timelock.
+
+### 15. **rescueETH(address to, uint256 amount)**  
+   - Recover ETH stuck in the contract. Protected by timelock.
+
+### 16. **burn(uint256 amount)**  
+   - Burn your tokens forever, reducing total supply.
+
+### 17. **setChainlinkPriceFeed(address)**  
+   - Set the Chainlink price feed contract. Protected by timelock.
+
+### 18. **setOneInchRouter(address)**  
+   - Set the 1inch router for swapping. Protected by timelock.
+
+### 19. **triggerTaxesTimelock() and related trigger functions**  
+   - Start the 24-hour delay before making critical changes (taxes, wallets, limits, gas, integrations). Used for safety and transparency.
 
 ---
 
@@ -114,4 +167,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Contact
 
 For any questions or feedback, please contact us via GitHub Issues or email at [Chepodros@gmail.com](mailto:Chepodros@gmail.com).
-
